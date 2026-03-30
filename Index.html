@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebBox V9 - Enhanced UI</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            color: #eee;
+        }
+
+        /* Sidebar: Thicker (320px) and Scrollable */
+        #sidebar {
+            width: 320px; 
+            min-width: 320px;
+            background-color: #262626;
+            border-right: 4px solid #444;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+            z-index: 10;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+        }
+
+        #gameCanvas {
+            flex-grow: 1;
+            background-color: #2d5a27;
+            cursor: crosshair;
+        }
+
+        h2 { 
+            color: #f1c40f; 
+            margin: 0 0 20px 0; 
+            text-align: center; 
+            font-size: 28px; 
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .stats-box {
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #444;
+        }
+
+        .stat-row { 
+            display: flex; 
+            justify-content: space-between; 
+            margin: 6px 0; 
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .blue-val { color: #3498db; }
+        .red-val { color: #e74c3c; }
+        .tool-val { color: #f1c40f; text-transform: uppercase; }
+
+        /* Buttons: Larger and more visible */
+        button {
+            width: 100%;
+            padding: 14px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 14px;
+            color: white;
+            text-transform: uppercase;
+            transition: all 0.2s;
+            border-bottom: 3px solid rgba(0,0,0,0.3);
+        }
+
+        button:hover { filter: brightness(1.2); transform: translateY(-1px); }
+        button:active { transform: translateY(2px); border-bottom-width: 1px; }
+
+        #teamToggle { 
+            height: 60px; 
+            font-size: 18px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .bg-blue { background-color: #3498db; }
+        .bg-red { background-color: #e74c3c; }
+
+        .btn-spawn { background-color: #4a4a4a; border-left: 5px solid #666; }
+        .btn-power { background-color: #2980b9; border-left: 5px solid #1c5980; }
+        .btn-env { background-color: #27ae60; margin-top: 15px; font-size: 16px; }
+
+        .label { 
+            font-size: 12px; 
+            color: #aaa; 
+            margin: 15px 0 5px 5px; 
+            text-transform: uppercase; 
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #222; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>WEBBOX V9</h2>
+    
+    <div class="stats-box">
+        <div class="stat-row">BLUE: <span id="bluePop" class="blue-val">0</span></div>
+        <div class="stat-row">RED: <span id="redPop" class="red-val">0</span></div>
+        <div class="stat-row">TOOL: <span id="curTool" class="tool-val">Normal</span></div>
+    </div>
+
+    <button id="teamToggle" class="bg-blue">ACTIVE TEAM: BLUE</button>
+
+    <div class="label">Unit Classes</div>
+    <button class="btn-spawn" onclick="setTool('Normal')">Normal Unit</button>
+    <button class="btn-spawn" onclick="setTool('Archer')">Archer (Kiting)</button>
+    <button class="btn-spawn" onclick="setTool('Knight')">Knight (Armor)</button>
+    <button class="btn-spawn" onclick="setTool('Ninja')">Ninja (Orbit)</button>
+    <button class="btn-spawn" onclick="setTool('Swapper')">Swapper</button>
+    <button class="btn-spawn" onclick="setTool('Shifter')">Shifter</button>
+    <button class="btn-spawn" onclick="setTool('Elephant')">Elephant (Giant)</button>
+
+    <div class="label">Powers & Magic</div>
+    <button class="btn-power" onclick="setTool('Weapon')">Give Weapon</button>
+    <button class="btn-power" onclick="setTool('Fire')">Fire Aura</button>
+    <button class="btn-power" onclick="setTool('Ice')">Ice Aura</button>
+    <button class="btn-power" onclick="setTool('Light')">Light (Blinding)</button>
+    <button class="btn-power" onclick="setTool('Wind')">Wind (Push)</button>
+    <button class="btn-power" onclick="setTool('Lightning')">Lightning Strike</button>
+
+    <div class="label">Map Settings</div>
+    <button class="btn-env" onclick="toggleWall()">Toggle Center Wall</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/** @type {HTMLCanvasElement} */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const teamBtn = document.getElementById('teamToggle');
+const bluePopEl = document.getElementById('bluePop');
+const redPopEl = document.getElementById('redPop');
+const toolEl = document.getElementById('curTool');
+
+let width, height;
+let people = [];
+let projectiles = [];
+let activeTeam = 'blue';
+let activeTool = 'Normal';
+let wallActive = false;
+
+function resize() {
+    width = canvas.width = canvas.offsetWidth;
+    height = canvas.height = canvas.offsetHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+teamBtn.onclick = () => {
+    activeTeam = activeTeam === 'blue' ? 'red' : 'blue';
+    teamBtn.className = activeTeam === 'blue' ? 'bg-blue' : 'bg-red';
+    teamBtn.innerText = `ACTIVE TEAM: ${activeTeam.toUpperCase()}`;
+};
+
+function setTool(t) {
+    activeTool = t;
+    toolEl.innerText = t;
+}
+
+function toggleWall() {
+    wallActive = !wallActive;
+}
+
+class Projectile {
+    constructor(x, y, targetX, targetY, team, type = 'arrow') {
+        this.x = x; this.y = y; this.team = team; this.type = type;
+        const angle = Math.atan2(targetY - y, targetX - x);
+        const speed = 8;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+        this.dead = false;
+        this.life = 150;
+    }
+    update() {
+        this.x += this.vx; this.y += this.vy;
+        this.life--;
+        if (this.life <= 0) this.dead = true;
+    }
+    draw() {
+        ctx.beginPath();
+        ctx.fillStyle = this.type === 'arrow' ? 'white' : (this.type === 'fire' ? '#ff6600' : '#00ffff');
+        ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+class Person {
+    constructor(x, y, type, team) {
+        this.x = x; this.y = y; this.type = type; this.team = team;
+        this.vx = 0; this.vy = 0;
+        this.hp = 100;
+        this.flash = 0;
+        this.dashCd = 0;
+        this.attackCd = 0;
+        this.swapCd = 0;
+        this.blinded = 0;
+        this.frozen = 0;
+        this.weapon = null;
+        this.powers = { fire: false, ice: false, light: false, wind: false };
+        this.radius = type === 'Elephant' ? 35 : 12;
+        this.applyStats();
+    }
+
+    applyStats() {
+        if (this.type === 'Elephant') this.hp = 500;
+        else if (this.type === 'Knight') this.hp = 150;
+        else if (this.type === 'Swapper') this.hp = 120;
+        else this.hp = 100;
+    }
+
+    takeDamage(amt, sourceX, sourceY, kb = 12) {
+        this.hp -= amt;
+        this.flash = 5;
+        const angle = Math.atan2(this.y - sourceY, this.x - sourceX);
+        const resist = this.type === 'Elephant' ? 0.1 : 1;
+        this.vx += Math.cos(angle) * kb * resist;
+        this.vy += Math.sin(angle) * kb * resist;
+    }
+
+    update() {
+        if (this.flash > 0) this.flash--;
+        if (this.dashCd > 0) this.dashCd--;
+        if (this.attackCd > 0) this.attackCd--;
+        if (this.swapCd > 0) this.swapCd--;
+        if (this.blinded > 0) this.blinded--;
+        if (this.frozen > 0) this.frozen--;
+
+        this.x += this.vx; this.y += this.vy;
+        this.vx *= 0.88; this.vy *= 0.88;
+
+        const bounce = -0.5;
+        if (this.x < this.radius) { this.x = this.radius; this.vx *= bounce; }
+        if (this.x > width - this.radius) { this.x = width - this.radius; this.vx *= bounce; }
+        if (this.y < this.radius) { this.y = this.radius; this.vy *= bounce; }
+        if (this.y > height - this.radius) { this.y = height - this.radius; this.vy *= bounce; }
+
+        if (wallActive) {
+            const mid = width / 2;
+            if (this.team === 'blue' && this.x > mid - this.radius) { this.x = mid - this.radius; this.vx *= bounce; }
+            if (this.team === 'red' && this.x < mid + this.radius) { this.x = mid + this.radius; this.vx *= bounce; }
+        }
+
+        const enemy = this.findNearestEnemy();
+        if (this.blinded > 0 || !enemy) {
+            this.vx += (Math.random() - 0.5) * 0.4;
+            this.vy += (Math.random() - 0.5) * 0.4;
+        } else {
+            this.runAI(enemy);
+        }
+
+        if (this.powers.wind) {
+            people.forEach(p => {
+                if (p.team !== this.team && Math.hypot(p.x - this.x, p.y - this.y) < 100) {
+                    const a = Math.atan2(p.y - this.y, p.x - this.x);
+                    p.vx += Math.cos(a) * 0.5; p.vy += Math.sin(a) * 0.5;
+                    p.takeDamage(0.1, this.x, this.y, 0);
+                }
+            });
+        }
+    }
+
+    runAI(target) {
+        const d = Math.hypot(target.x - this.x, target.y - this.y);
+        const a = Math.atan2(target.y - this.y, target.x - this.x);
+        let spd = this.frozen > 0 ? 0.1 : 0.45;
+        let limit = this.type === 'Ninja' ? 5 : (this.type === 'Elephant' ? 1.5 : 3.2);
+
+        if (this.type === 'Knight' && this.hp < 25) {
+            this.vx -= Math.cos(a) * spd; this.vy -= Math.sin(a) * spd; limit = 4.0;
+        } else if (this.type === 'Archer') {
+            if (d > 250) { this.vx += Math.cos(a) * spd; this.vy += Math.sin(a) * spd; }
+            else if (d < 130) { this.vx -= Math.cos(a) * spd; this.vy -= Math.sin(a) * spd; }
+            if (this.attackCd <= 0 && d < 350) {
+                projectiles.push(new Projectile(this.x, this.y, target.x, target.y, this.team));
+                this.attackCd = 60;
+            }
+        } else if (this.type === 'Ninja') {
+            if (d > 60) {
+                const orbit = a + Math.PI / 2;
+                this.vx += Math.cos(orbit) * spd; this.vy += Math.sin(orbit) * spd;
+                this.vx += Math.cos(a) * (spd * 0.4);
+            }
+            if (this.dashCd <= 0 && d < 160) {
+                this.vx += Math.cos(a) * 16; this.vy += Math.sin(a) * 16; this.dashCd = 80;
+            }
+        } else {
+            this.vx += Math.cos(a) * spd; this.vy += Math.sin(a) * spd;
+            if (this.type !== 'Elephant' && this.dashCd <= 0 && d > 60 && d < 140) {
+                this.vx += Math.cos(a) * 11; this.vy += Math.sin(a) * 11; this.dashCd = 90;
+            }
+        }
+
+        // Elemental Shooting
+        if (this.attackCd <= 0 && d < 300) {
+            if (this.powers.fire) { projectiles.push(new Projectile(this.x, this.y, target.x, target.y, this.team, 'fire')); this.attackCd = 40; }
+            else if (this.powers.ice) { projectiles.push(new Projectile(this.x, this.y, target.x, target.y, this.team, 'ice')); this.attackCd = 40; }
+        }
+
+        // Swapper Logic
+        if (this.type === 'Swapper' && this.swapCd <= 0 && d < 110) {
+            const others = people.filter(p => p !== this);
+            const r = others[Math.floor(Math.random() * others.length)];
+            if (r) { [this.x, r.x] = [r.x, this.x]; [this.y, r.y] = [r.y, this.y]; this.swapCd = 120; }
+        }
+
+        // Shifter Logic
+        if (this.type === 'Shifter' && d < 65) {
+            this.type = target.type; this.weapon = target.weapon; this.powers = {...target.powers};
+            target.type = 'Normal'; target.weapon = null; target.powers = {fire:0, ice:0, light:0, wind:0};
+            target.takeDamage(20, this.x, this.y, 25); this.applyStats();
+        }
+
+        // Melee
+        let reach = this.radius + 12;
+        if (this.type === 'Elephant') reach = 75;
+        else if (this.weapon === 'Sword') reach = 45;
+        else if (this.weapon === 'Spear') reach = 65;
+
+        if (d < reach && this.attackCd <= 0) {
+            let dmg = this.type === 'Elephant' ? 10 : 2.5;
+            let kb = this.type === 'Elephant' ? 30 : (this.type === 'Knight' ? 18 : 12);
+            if (this.weapon === 'Sword') dmg += 1.5;
+            if (this.weapon === 'Spear') dmg += 1.0;
+            if (this.powers.fire) dmg += 4;
+            if (this.powers.light) dmg += 2;
+            target.takeDamage(dmg, this.x, this.y, kb);
+            if (this.powers.light) target.blinded = 80;
+            this.attackCd = this.type === 'Elephant' ? 45 : 18;
+        }
+
+        const curr = Math.hypot(this.vx, this.vy);
+        if (curr > limit) { this.vx = (this.vx/curr)*limit; this.vy = (this.vy/curr)*limit; }
+    }
+
+    findNearestEnemy() {
+        let best = null, minD = Infinity;
+        for (let p of people) {
+            if (p.team !== this.team && p.hp > 0) {
+                const d = Math.hypot(p.x - this.x, p.y - this.y);
+                if (d < minD) { minD = d; best = p; }
+            }
+        }
+        return best;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        let base = this.team === 'blue' ? '#3498db' : '#e74c3c';
+        ctx.fillStyle = this.flash > 0 ? 'white' : (this.blinded > 0 ? 'black' : base);
+
+        // Powers
+        ctx.lineWidth = 3;
+        if (this.powers.fire) { ctx.strokeStyle = '#e67e22'; ctx.beginPath(); ctx.arc(0,0,40,0,Math.PI*2); ctx.stroke(); }
+        if (this.powers.ice) { ctx.strokeStyle = '#00ffff'; ctx.beginPath(); ctx.arc(0,0,42,0,Math.PI*2); ctx.stroke(); }
+        if (this.powers.light) { ctx.strokeStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(0,0,44,0,Math.PI*2); ctx.stroke(); }
+        if (this.powers.wind) { ctx.strokeStyle = 'white'; ctx.beginPath(); ctx.arc(0,0,38,0,Math.PI*2); ctx.stroke(); }
+
+        if (this.type === 'Elephant') {
+            ctx.fillRect(-35, -25, 70, 50);
+            const ang = Math.atan2(this.vy, this.vx);
+            ctx.rotate(ang);
+            ctx.fillRect(30, -8, 30, 16); // Trunk
+            ctx.fillStyle = 'white';
+            ctx.fillRect(20, -18, 20, 6); ctx.fillRect(20, 12, 20, 6); // Tusks
+        } else {
+            ctx.fillRect(-5, 6, 4, 10); ctx.fillRect(1, 6, 4, 10); // Legs
+            if (this.type === 'Knight') { ctx.fillStyle = '#666'; ctx.fillRect(-10, -8, 20, 18); ctx.fillStyle = ctx.fillStyle === '#666' ? base : ctx.fillStyle; }
+            ctx.fillRect(-5, -8, 10, 16); // Torso
+            ctx.beginPath(); ctx.arc(0, -14, 8, 0, Math.PI * 2); ctx.fill(); // Head
+            if (this.type === 'Archer') { ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.arc(0, -16, 9, Math.PI, 0); ctx.fill(); }
+            if (this.type === 'Ninja') { ctx.fillStyle = 'black'; ctx.fillRect(-9, -17, 18, 4); }
+            if (this.type === 'Swapper') { ctx.fillStyle = '#9b59b6'; ctx.fillRect(-7, 2, 14, 4); }
+            if (this.type === 'Shifter') { ctx.fillStyle = '#00f2ff'; ctx.beginPath(); ctx.arc(0, -26, 4, 0, Math.PI*2); ctx.fill(); }
+            if (this.weapon) {
+                ctx.rotate(Math.atan2(this.vy, this.vx));
+                ctx.strokeStyle = '#ccc'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(this.weapon === 'Sword' ? 30 : 50, 0); ctx.stroke();
+            }
+        }
+        ctx.restore();
+        ctx.fillStyle = 'white'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(Math.ceil(this.hp), this.x, this.y - (this.radius + 20));
+    }
+}
+
+canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (['Normal','Archer','Knight','Ninja','Swapper','Shifter','Elephant'].includes(activeTool)) {
+        people.push(new Person(mx, my, activeTool, activeTeam));
+    } else if (activeTool === 'Lightning') {
+        people.forEach(p => { if (Math.hypot(p.x - mx, p.y - my) < 100) { p.hp = 0; p.flash = 10; } });
+    } else {
+        people.forEach(p => {
+            if (Math.hypot(p.x - mx, p.y - my) < 100) {
+                if (activeTool === 'Weapon') p.weapon = Math.random() > 0.5 ? 'Sword' : 'Spear';
+                else p.powers[activeTool.toLowerCase()] = true;
+            }
+        });
+    }
+});
+
+function loop() {
+    ctx.fillStyle = '#2d5a27'; ctx.fillRect(0, 0, width, height);
+    if (wallActive) { ctx.fillStyle = '#444'; ctx.fillRect(width / 2 - 5, 0, 10, height); }
+
+    let b = 0, r = 0;
+    people = people.filter(p => p.hp > 0);
+    people.forEach(p => { p.update(); p.draw(); p.team === 'blue' ? b++ : r++; });
+
+    projectiles = projectiles.filter(pj => !pj.dead);
+    projectiles.forEach(pj => {
+        pj.update(); pj.draw();
+        people.forEach(p => {
+            if (p.team !== pj.team && Math.hypot(p.x - pj.x, p.y - pj.y) < p.radius + 6) {
+                p.takeDamage(pj.type === 'fire' ? 18 : 12, pj.x, pj.y, 6);
+                if (pj.type === 'ice') p.frozen = 80;
+                pj.dead = true;
+            }
+        });
+    });
+
+    bluePopEl.innerText = b; redPopEl.innerText = r;
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
